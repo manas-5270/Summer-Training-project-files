@@ -8,6 +8,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import plotly.graph_objects as go
 import plotly.express as px
+import os
+import joblib
+
+# Path to the pre-trained model bundle produced by the notebook
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model.pkl')
 
 # Initialize global variables
 df = None
@@ -51,17 +56,39 @@ def load_data():
         df = pd.DataFrame(products)
     return df
 
+# Persist the trained models so the app can reuse them without retraining
+def save_models():
+    joblib.dump({
+        'regression_model': regression_model,
+        'classification_model': classification_model,
+        'label_encoders': label_encoders,
+        'scaler': scaler,
+    }, MODEL_PATH)
+    return MODEL_PATH
+
+# Load the pre-trained model bundle (model.pkl) if it exists
+def load_models():
+    global regression_model, classification_model, label_encoders, scaler
+    if not os.path.exists(MODEL_PATH):
+        return False
+    bundle = joblib.load(MODEL_PATH)
+    regression_model = bundle['regression_model']
+    classification_model = bundle['classification_model']
+    label_encoders = bundle['label_encoders']
+    scaler = bundle['scaler']
+    return True
+
 # Train Models
 def train_models():
     global regression_model, classification_model, label_encoders, scaler, df
     
-    # Label Encoding
-    le = LabelEncoder()
+    # Label Encoding (one encoder per column so they can be reused later)
     df_encoded = df.copy()
     
     categorical_cols = ['product_name', 'category', 'brand', 'city', 'seller', 'delivery_status']
     for col in categorical_cols:
         if col in df_encoded.columns:
+            le = LabelEncoder()
             df_encoded[col] = le.fit_transform(df_encoded[col].astype(str))
             label_encoders[col] = le
     
@@ -89,6 +116,9 @@ def train_models():
     
     regression_model = rf_reg
     classification_model = dt_clf
+    
+    # Persist the freshly trained models to model.pkl
+    save_models()
     
     return "Models trained successfully!"
 
@@ -538,9 +568,10 @@ def show_about():
     result += "- Language: Python"
     return result
 
-# Initialize data
+# Initialize data and models (reuse model.pkl if present, otherwise train)
 load_data()
-train_models()
+if not load_models():
+    train_models()
 
 # Get unique categories and brands
 categories = sorted(df['category'].unique())
